@@ -1,10 +1,14 @@
 import google.generativeai as genai
 import re
+import os
+from dotenv import load_dotenv
 
 load_dotenv()
 
 # Set your Gemini API key
 api_key = os.getenv('API_KEY')
+
+genai.configure(api_key=api_key)
 
 def generate_flashcards(text, num_flashcards):
     prompt = f"Create {num_flashcards} flashcards from the following text:\n\n{text}\n\n Don't write any title \n\n Flashcards:"
@@ -23,6 +27,7 @@ def generate_flashcards(text, num_flashcards):
             
             print(clean_card)
             print() # Add an extra newline for better readability
+    return response
 
 
 # Example usage
