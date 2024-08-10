@@ -3,30 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Upload</title>
+    <title>Flashcard Generator</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        h1 {
+            color: #444;
+            margin-bottom: 20px;
+        }
+        
+        #uploadButton {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        
+        #uploadButton:hover {
+            background-color: #0056b3;
+        }
+        
+        #message {
+            margin-top: 15px;
+            font-size: 16px;
+        }
+        
+        #flashcards {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+        
+        .flashcard {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .flashcard:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .flashcard .front, .flashcard .back {
+            display: none;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+        
+        .flashcard .front.active {
+            display: block;
+            font-weight: bold;
+        }
+        
+        .flashcard .back.active {
+            display: block;
+            color: #555;
+        }
+        
+        .flashcard p {
+            margin: 0;
+        }
+    </style>
 </head>
 <body>
     <h1>Upload a file</h1>
+    <input type="text" id="courseInput" placeholder="Enter course name">
     <input type="file" id="fileInput">
     <button id="uploadButton">Upload</button>
     <p id="message"></p>
-    <div id="flashcards"></div> <!-- Use <div> to display flashcards -->
+    <a href="/view_flashcards">View Previous Flashcards</a>
+
     <script>
         document.getElementById('uploadButton').addEventListener('click', (event) => {
             event.preventDefault(); // Prevent the default form submission
 
             const fileInput = document.getElementById('fileInput');
+            const courseInput = document.getElementById('courseInput');
             const message = document.getElementById('message');
-            const flashcardsDiv = document.getElementById('flashcards');
 
             if (fileInput.files.length === 0) {
                 message.textContent = 'Please select a file.';
+                message.style.color = 'red';
                 return;
             }
 
             const file = fileInput.files[0];
+            const course = courseInput.value || 'general'; // Default to 'general' if no course is provided
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('course', course);
 
             fetch('/upload', {
                 method: 'POST',
@@ -36,23 +122,20 @@
             .then(data => {
                 if (data.error) {
                     message.textContent = `Error: ${data.error}`;
+                    message.style.color = 'red';
                 } else {
                     message.textContent = `File uploaded successfully as ${data.type}`;
-                    flashcardsDiv.innerHTML = ''; // Clear previous flashcards
+                    message.style.color = 'green';
 
-                    data.flashcards.forEach(card => {
-                        const cardElement = document.createElement('div');
-                        cardElement.textContent = card;
-                        cardElement.style.border = '1px solid #000';
-                        cardElement.style.padding = '10px';
-                        cardElement.style.margin = '10px 0';
-                        flashcardsDiv.appendChild(cardElement);
-                    });
+                    // Save flashcards to localStorage and redirect to the generated cards page
+                    localStorage.setItem('flashcards', JSON.stringify(data.flashcards));
+                    window.location.href = '/generated_cards';
                 }
             })
             .catch(error => {
                 console.error('Error during fetch:', error);
                 message.textContent = 'An error occurred during file upload.';
+                message.style.color = 'red';
             });
         });
     </script>

@@ -8,6 +8,10 @@ import os
 import re
 from dotenv import load_dotenv
 import google.generativeai as genai
+from pymongo import MongoClient
+import json
+import time
+
 
 load_dotenv()
 
@@ -19,6 +23,11 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
+# Set up MongoDB
+client = MongoClient(os.getenv('MONGO_URI'))  # Replace with your MongoDB connection string
+db = client.flashy  # Database name
+flashcards_collection = db.flashcards  # Collection name
+
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
@@ -26,24 +35,50 @@ ALLOWED_EXTENSIONS = {'pdf', 'pptx', 'docx'}
 
 def allowed_file(filename):
     return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/generated_cards')
+def generated_cards():
+    return render_template('generated_cards.html')
+
+@app.route('/view_flashcards')
+def view_flashcards():
+    return render_template('view_flashcards.html')
+
+@app.route('/courses')
+def get_courses():
+    courses = flashcards_collection.distinct('course')
+    return jsonify({'courses': courses})
+
+@app.route('/flashcards')
+def get_flashcards():
+    course = request.args.get('course', 'general')
+    flashcards = flashcards_collection.find_one({'course': course})
+    if flashcards:
+        return jsonify({'flashcards': flashcards['flashcards']})
+    return jsonify({'flashcards': []})
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'})
+    
     file = request.files['file']
+    course = request.form.get('course', 'general').title()  # Default to 'general' if no course is specified
+    
     if file.filename == '':
         return jsonify({'error': 'No selected file'})
+    
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
         file_type = file.filename.rsplit('.', 1)[1].lower()
+        
         try:
             flashcards = ''
             if file_type == 'pdf':
@@ -54,11 +89,22 @@ def upload_file():
                 flashcards = extract_text_from_docx(file_path)
             else:
                 flashcards = 'Unsupported file type'
+            
             os.remove(file_path)
+            
+            # Store or update the flashcards in MongoDB
+            flashcards_collection.update_one(
+                {'course': course},
+                {'$addToSet': {'flashcards': {'$each': flashcards}}},
+                upsert=True
+            )
+            
             return jsonify({'type': file_type, 'flashcards': flashcards})
+        
         except Exception as e:
             print(f"Error processing file: {e}")
-            return jsonify({'error': str(e)})
+            return jsonify({'error': 'Error processing file'})
+    
     return jsonify({'error': 'File type not allowed'})
 
 def extract_text_from_docx(docx_path):
@@ -73,7 +119,8 @@ def extract_text_from_docx(docx_path):
         print(f"Generated flashcards: {flashcards}")
         return flashcards
     except Exception as e:
-        return f"Error extracting text from DOCX: {str(e)}"
+        print(f"Error extracting text from DOCX: {e}")
+        return "Error extracting text from DOCX"
 
 def extract_text_from_pptx(pptx_path):
     try:
@@ -89,7 +136,8 @@ def extract_text_from_pptx(pptx_path):
         print(f"Generated flashcards: {flashcards}")
         return flashcards
     except Exception as e:
-        return f"Error extracting text from PPTX: {str(e)}"
+        print(f"Error extracting text from PPTX: {e}")
+        return "Error extracting text from PPTX"
 
 def extract_text_from_pdf(pdf_path):
     try:
@@ -104,27 +152,42 @@ def extract_text_from_pdf(pdf_path):
         print(f"Generated flashcards: {flashcards}")
         return flashcards
     except Exception as e:
-        return f"Error extracting text from PDF: {str(e)}"
+        print(f"Error extracting text from PDF: {e}")
+        return "Error extracting text from PDF"
 
-def generate_flashcards(text, num_flashcards):
-    prompt = f"Create {num_flashcards} flashcards from the following text:\n\n{text}\n\n Don't write any title \n\n Flashcards:"
 
-    model = genai.GenerativeModel('gemini-1.5-pro')
-    response = model.generate_content(prompt)
+def generate_flashcards(text, num_flashcards, retries=3):
+    prompt = f"Create {num_flashcards} flashcards from the following text:\n\n{text}\n\n Return answers in json format as an array of objects with 'front' and 'back' keys."
 
-    # Extract and print the flashcards in a readable format
-    if response and response.candidates:
-        flashcards_text = response.candidates[0].content.parts[0].text
-        flashcards = flashcards_text.split('\n\n')
+    for attempt in range(retries):
+        try:
+            model = genai.GenerativeModel('gemini-1.5-pro')
+            response = model.generate_content(prompt)
+            
+            if response and response.candidates:
+                flashcards_text = response.candidates[0].content.parts[0].text
+                
+                # Find the start of the JSON array
+                json_start = flashcards_text.find("[")
+                if json_start != -1:
+                    json_text = flashcards_text[json_start:]
+                    try:
+                        flashcards = json.loads(json_text)
+                        return flashcards
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decode error on attempt {attempt + 1}: {e}")
+                else:
+                    print(f"No JSON array found in the response on attempt {attempt + 1}.")
+            else:
+                print(f"Error generating flashcards on attempt {attempt + 1}.")
         
-        clean_flashcards = []
-        for card in flashcards:
-            # Remove markdown formatting
-            clean_card = re.sub(r'\*\*|\#\#|\n', '', card).strip()
-            clean_flashcards.append(clean_card)
+        except Exception as e:
+            print(f"Unexpected error on attempt {attempt + 1}: {e}")
         
-        return clean_flashcards
-    return "Error generating flashcards"
+        time.sleep(1)  # Optional: wait 1 second before retrying
+
+    return "Error generating flashcards after multiple attempts."
+
 
 if __name__ == '__main__':
     app.run(debug=True)

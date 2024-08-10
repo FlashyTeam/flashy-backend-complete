@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generated Flashcards</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        h1 {
+            color: #444;
+            margin-bottom: 20px;
+        }
+
+        #flashcards {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+        
+        .flashcard {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .flashcard:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .flashcard .front, .flashcard .back {
+            display: none;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+        
+        .flashcard .front.active {
+            display: block;
+            font-weight: bold;
+        }
+        
+        .flashcard .back.active {
+            display: block;
+            color: #555;
+        }
+        
+        .flashcard p {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Generated Flashcards</h1>
+    <div id="flashcards"></div> <!-- Display flashcards -->
+    <script>
+        // Fetch flashcards data from localStorage and display them
+        document.addEventListener('DOMContentLoaded', () => {
+            const flashcardsDiv = document.getElementById('flashcards');
+            const flashcards = JSON.parse(localStorage.getItem('flashcards')) || [];
+
+            flashcards.forEach(card => {
+                const cardElement = document.createElement('div');
+                cardElement.className = 'flashcard';
+
+                const frontElement = document.createElement('p');
+                frontElement.className = 'front active';
+                frontElement.textContent = card.front;
+
+                const backElement = document.createElement('p');
+                backElement.className = 'back';
+                backElement.textContent = card.back;
+
+                cardElement.appendChild(frontElement);
+                cardElement.appendChild(backElement);
+
+                cardElement.addEventListener('click', () => {
+                    frontElement.classList.toggle('active');
+                    backElement.classList.toggle('active');
+                });
+
+                flashcardsDiv.appendChild(cardElement);
+            });
+        });
+    </script>
+</body>
+</html>

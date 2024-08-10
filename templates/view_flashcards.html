@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Flashcards</title>
+    <style>
+        /* body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        } */
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        h1 {
+            color: #444;
+            margin-bottom: 20px;
+        }
+
+        .course-list {
+            width: 50%;
+        }
+
+        .course-list, .flashcards-list {
+            margin: 0;
+            padding: 0;
+            list-style-type: none;
+        }
+        .course-list li, .flashcards-list li {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+            cursor: pointer;
+        }
+        #flashcardsList {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+        
+        .flashcard {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .flashcard:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .flashcard .front, .flashcard .back {
+            display: none;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+        
+        .flashcard .front.active {
+            display: block;
+            font-weight: bold;
+        }
+        
+        .flashcard .back.active {
+            display: block;
+            color: #555;
+        }
+        
+        .flashcard p {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>View Flashcards</h1>
+    <h2>Select a Course</h2>
+    <ul id="courseList" class="course-list"></ul>
+    <h2>Flashcards</h2>
+    <div id="flashcardsList" class="flashcards-list"></div>
+
+    <script>
+        // Fetch the list of courses and populate the course list
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('/courses')
+                .then(response => response.json())
+                .then(data => {
+                    const courseList = document.getElementById('courseList');
+                    data.courses.forEach(course => {
+                        const li = document.createElement('li');
+                        li.textContent = course;
+                        li.addEventListener('click', () => fetchFlashcards(course));
+                        courseList.appendChild(li);
+                    });
+                })
+                .catch(error => console.error('Error fetching courses:', error));
+        });
+
+        // Fetch flashcards for the selected course
+        function fetchFlashcards(course) {
+            fetch(`/flashcards?course=${encodeURIComponent(course)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const flashcardsList = document.getElementById('flashcardsList');
+                    flashcardsList.innerHTML = '';
+
+                    data.flashcards.forEach(card => {
+                        const cardElement = document.createElement('div');
+                        cardElement.className = 'flashcard';
+
+                        const frontElement = document.createElement('p');
+                        frontElement.className = 'front active';
+                        frontElement.textContent = card.front;
+
+                        const backElement = document.createElement('p');
+                        backElement.className = 'back';
+                        backElement.textContent = card.back;
+
+                        cardElement.appendChild(frontElement);
+                        cardElement.appendChild(backElement);
+
+                        cardElement.addEventListener('click', () => {
+                            frontElement.classList.toggle('active');
+                            backElement.classList.toggle('active');
+                        });
+
+                        flashcardsList.appendChild(cardElement);
+
+                    });
+                    // flashcardsList.style.display = 'block';
+                })
+                .catch(error => console.error('Error fetching flashcards:', error));
+        }
+    </script>
+</body>
+</html>
