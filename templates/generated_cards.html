@@ -69,35 +69,45 @@
 <body>
     <h1>Generated Flashcards</h1>
     <div id="flashcards"></div> <!-- Display flashcards -->
+
+
     <script>
-        // Fetch flashcards data from localStorage and display them
+        // Ensure flashcards are defined globally
+        var flashcards = [];
+
+        // DOMContentLoaded ensures the DOM is fully loaded before running the script
         document.addEventListener('DOMContentLoaded', () => {
             const flashcardsDiv = document.getElementById('flashcards');
-            const flashcards = JSON.parse(localStorage.getItem('flashcards')) || [];
 
-            flashcards.forEach(card => {
-                const cardElement = document.createElement('div');
-                cardElement.className = 'flashcard';
+            // Safely parse and use the flashcards data from the server
+            flashcards = JSON.parse('{{ flashcards | tojson | safe }}');
 
-                const frontElement = document.createElement('p');
-                frontElement.className = 'front active';
-                frontElement.textContent = card.front;
+            // Proceed only if flashcards is an array
+            if (Array.isArray(flashcards)) {
+                flashcards.forEach(card => {
+                    const cardElement = document.createElement('div');
+                    cardElement.className = 'flashcard';
 
-                const backElement = document.createElement('p');
-                backElement.className = 'back';
-                backElement.textContent = card.back;
+                    const frontElement = document.createElement('p');
+                    frontElement.className = 'front active';
+                    frontElement.textContent = card.front;
 
-                cardElement.appendChild(frontElement);
-                cardElement.appendChild(backElement);
+                    const backElement = document.createElement('p');
+                    backElement.className = 'back';
+                    backElement.textContent = card.back;
 
-                cardElement.addEventListener('click', () => {
-                    frontElement.classList.toggle('active');
-                    backElement.classList.toggle('active');
+                    cardElement.appendChild(frontElement);
+                    cardElement.appendChild(backElement);
+
+                    cardElement.addEventListener('click', () => {
+                        frontElement.classList.toggle('active');
+                        backElement.classList.toggle('active');
+                    });
+
+                    flashcardsDiv.appendChild(cardElement);
                 });
-
-                flashcardsDiv.appendChild(cardElement);
-            });
+            }
         });
     </script>
-</body>
+    </body>
 </html>

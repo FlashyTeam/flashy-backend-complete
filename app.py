@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
+from pdf2image import convert_from_path
+import PyPDF2
 from docx import Document
 from pptx import Presentation
 import fitz  # PyMuPDF
@@ -28,6 +30,30 @@ client = MongoClient(os.getenv('MONGO_URI'))  # Replace with your MongoDB connec
 db = client.flashy  # Database name
 flashcards_collection = db.flashcards  # Collection name
 
+
+# Ensure the static folder exists for saving images
+if not os.path.exists('static'):
+    os.makedirs('static')
+
+
+def chunk_text_by_lines(paragraphs, lines_per_page=25):
+    chunks = []
+    current_chunk = []
+    current_lines = 0
+    for p in paragraphs:
+        lines_in_p = p.count('\n') + 1
+        if current_lines + lines_in_p > lines_per_page:
+            chunks.append(current_chunk)
+            current_chunk = []
+            current_lines = 0
+        current_chunk.append(p)
+        current_lines += lines_in_p
+    if current_chunk:
+        chunks.append(current_chunk)
+    return chunks
+
+
+
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
@@ -39,7 +65,7 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('upload.html')
 
 @app.route('/generated_cards')
 def generated_cards():
@@ -48,6 +74,10 @@ def generated_cards():
 @app.route('/view_flashcards')
 def view_flashcards():
     return render_template('view_flashcards.html')
+
+@app.route('/upload_page')
+def upload_page():
+    return render_template('upload.html')
 
 @app.route('/courses')
 def get_courses():
@@ -107,6 +137,101 @@ def upload_file():
     
     return jsonify({'error': 'File type not allowed'})
 
+
+@app.route('/preview_upload', methods=['GET', 'POST'])
+def preview_upload_file():
+    if request.method == 'POST':
+        file = request.files['file']
+        course = request.form.get('text', 'general').title()
+
+        if file:
+            file_ext = file.filename.split('.')[-1].lower()
+            if file_ext == 'pdf':
+                file.save('uploaded_doc.pdf')
+                images = convert_from_path('uploaded_doc.pdf',500,poppler_path=r'C:\Program Files\poppler-24.07.0\Library\bin')
+                image_paths = []
+                for i, image in enumerate(images):
+                    image_path = f'static/page_{i + 1}.png'
+                    image.save(image_path, 'PNG')
+                    image_paths.append(image_path)
+                return render_template('preview_pdf.html', images=image_paths, file_ext=file_ext, course=course)
+            elif file_ext == 'docx':
+                file.save('uploaded_doc.docx')
+                doc = Document('uploaded_doc.docx')
+                paragraphs = [p.text for p in doc.paragraphs]
+                pages = chunk_text_by_lines(paragraphs)
+                return render_template('preview_text.html', pages=pages, file_ext=file_ext, course=course)
+            elif file_ext == 'pptx':
+                file.save('uploaded_presentation.pptx')
+                ppt = Presentation('uploaded_presentation.pptx')
+                slides = [slide.shapes.title.text if slide.shapes.title else '' for slide in ppt.slides]
+                return render_template('preview_text.html', pages=[slides], file_ext=file_ext, course=course)
+    return render_template('upload.html')
+
+
+@app.route('/process', methods=['POST'])
+def process_pages():
+    selected_pages = request.form.getlist('pages')
+    file_ext = request.form.get('file_ext')
+    course = request.form.get('course', 'General')
+
+    try:
+        extracted_text = ''
+        flashcards = ''
+        
+        if file_ext == 'pdf':
+            reader = PyPDF2.PdfReader('uploaded_doc.pdf')
+            for page_num in selected_pages:
+                page = reader.pages[int(page_num) - 1]
+                extracted_text += page.extract_text()
+            # Delete images after processing
+            for i in range(len(reader.pages)):
+                image_path = f'static/page_{i + 1}.png'
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+            if os.path.exists('uploaded_doc.pdf'):
+                os.remove('uploaded_doc.pdf')
+
+        elif file_ext == 'docx':
+            doc = Document('uploaded_doc.docx')
+            paragraphs = [p.text for p in doc.paragraphs]
+            pages = chunk_text_by_lines(paragraphs)
+            for page_num in selected_pages:
+                extracted_text += '\n'.join(pages[int(page_num) - 1])
+            if os.path.exists('uploaded_doc.docx'):
+                os.remove('uploaded_doc.docx')
+
+        elif file_ext == 'pptx':
+            ppt = Presentation('uploaded_presentation.pptx')
+            slides = [slide.shapes.title.text if slide.shapes.title else '' for slide in ppt.slides]
+            for page_num in selected_pages:
+                extracted_text += slides[int(page_num) - 1] + '\n'
+            if os.path.exists('uploaded_presentation.pptx'):
+                os.remove('uploaded_presentation.pptx')
+
+        print(extracted_text)
+        flashcards = generate_flashcards(extracted_text, 6)
+        print(flashcards)
+
+
+        # Store or update the flashcards in MongoDB
+        flashcards_collection.update_one(
+            {'course': course},
+            {'$addToSet': {'flashcards': {'$each': flashcards}}},
+            upsert=True
+        )
+
+    except Exception as e:
+        print(f"Error processing file: {e}")
+        return render_template('generated_cards.html')
+
+    return render_template('generated_cards.html', file_type=file_ext, flashcards=flashcards )
+
+
+
+
+
+
 def extract_text_from_docx(docx_path):
     try:
         doc = Document(docx_path)
@@ -156,13 +281,16 @@ def extract_text_from_pdf(pdf_path):
         return "Error extracting text from PDF"
 
 
+
+
 def generate_flashcards(text, num_flashcards, retries=3):
-    prompt = f"Create {num_flashcards} flashcards from the following text:\n\n{text}\n\n Return answers in json format as an array of objects with 'front' and 'back' keys."
+    prompt = f"Create {num_flashcards} flashcards from the following text:\n\n{text}\n\n Return answers in json format as an array of objects with 'front' and 'back' keys. Everything should be inline, no backslash n"
 
     for attempt in range(retries):
         try:
             model = genai.GenerativeModel('gemini-1.5-pro')
             response = model.generate_content(prompt)
+            print(response)
             
             if response and response.candidates:
                 flashcards_text = response.candidates[0].content.parts[0].text
