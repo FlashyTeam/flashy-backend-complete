@@ -21,7 +21,7 @@
             margin-bottom: 20px;
         }
 
-        #flashcards {
+        #flashcards, #quiz_cards {
             margin-top: 30px;
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -64,6 +64,17 @@
         .flashcard p {
             margin: 0;
         }
+        .optionItem{
+            text-align: left;
+            font-weight: lighter;
+            line-height: normal;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -71,6 +82,11 @@
     <div id="flashcards"></div> <!-- Display flashcards -->
 
 
+    <h1>Generated Quiz</h1>
+    <div id="quiz_cards"></div> <!-- Display Quiz cards -->
+
+
+    <!-- Script for displaying flashcards -->
     <script>
         // Ensure flashcards are defined globally
         var flashcards = [];
@@ -80,7 +96,7 @@
             const flashcardsDiv = document.getElementById('flashcards');
 
             // Safely parse and use the flashcards data from the server
-            flashcards = JSON.parse('{{ flashcards | tojson | safe }}');
+            flashcards = JSON.parse('{{ flashcards | tojson | safe }}') || [];
 
             // Proceed only if flashcards is an array
             if (Array.isArray(flashcards)) {
@@ -109,5 +125,81 @@
             }
         });
     </script>
-    </body>
+
+
+<!-- Script for displaying quiz -->
+    <script>
+        // Ensure quiz_cards are defined globally
+        var quiz_cards = [];
+
+        // DOMContentLoaded ensures the DOM is fully loaded before running the script
+        document.addEventListener('DOMContentLoaded', () => {
+            const quiz_cardsDiv = document.getElementById('quiz_cards');
+
+            // Safely parse and use the quiz_cards data from the server
+            quiz_cards = JSON.parse('{{ quiz_cards | tojson | safe }}') || [];
+
+            // Proceed only if quiz_cards is an array
+            if (Array.isArray(quiz_cards)) {
+                quiz_cards.forEach(card => {
+                    const cardElement = document.createElement('div');
+                    cardElement.className = 'flashcard';
+
+                    // Determine whether the card is a standard flashcard or multiple-choice
+                    if (card.front && card.back) {
+                        // Standard flashcard format
+                        const frontElement = document.createElement('p');
+                        frontElement.className = 'front active';
+                        frontElement.textContent = card.front;
+
+                        const backElement = document.createElement('p');
+                        backElement.className = 'back';
+                        backElement.textContent = card.back;
+
+                        cardElement.appendChild(frontElement);
+                        cardElement.appendChild(backElement);
+
+                    } else if (card.question && card.options && card.answer) {
+                        // Multiple-choice flashcard format
+                        const frontElement = document.createElement('div');
+                        frontElement.className = 'front active';
+
+                        const questionElement = document.createElement('p');
+                        questionElement.textContent = card.question;
+                        frontElement.appendChild(questionElement);
+
+                        // Display options as a list
+                        const optionsList = document.createElement('ul');
+                        card.options.forEach(option => {
+                            const optionItem = document.createElement('li');
+                            optionItem.className = 'optionItem';
+                            optionItem.textContent = option;
+                            optionsList.appendChild(optionItem);
+                        });
+                        frontElement.appendChild(optionsList);
+
+                        const backElement = document.createElement('p');
+                        backElement.className = 'back';
+                        backElement.textContent = `Answer: ${card.answer}`;
+
+                        cardElement.appendChild(frontElement);
+                        cardElement.appendChild(backElement);
+                    }
+
+                    // Add click event listener for flipping the card
+                    cardElement.addEventListener('click', () => {
+                        const fronts = cardElement.querySelectorAll('.front');
+                        const backs = cardElement.querySelectorAll('.back');
+
+                        fronts.forEach(front => front.classList.toggle('active'));
+                        backs.forEach(back => back.classList.toggle('active'));
+                    });
+
+                    quiz_cardsDiv.appendChild(cardElement);
+                });
+            }
+        });
+    </script>
+
+</body>
 </html>

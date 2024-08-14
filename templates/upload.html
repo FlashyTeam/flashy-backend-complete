@@ -86,16 +86,19 @@
 </head>
 <body>
     <div class="upload-container">
+        <h1>Welcome, {{ username }} </h1>
         <h1>Upload a Document</h1>
         <form action="/preview_upload" method="POST" enctype="multipart/form-data">
             <label for="fileInput"><i class="fas fa-upload"></i> Choose File</label>
+            <input type="hidden" name="username" value="{{ username }}">
             <input type="text" name="text" id="courseInput" placeholder="Please enter the course for this file" required>
             <input type="file" name="file" id="fileInput" accept=".pdf,.docx,.pptx" required>
             <div class="upload-preview" id="uploadPreview"></div>
             <input class="submit-button" type="submit" value="Upload">
         </form>
 
-        <a href="/view_flashcards">View Previous Flashcards</a>
+        <a id="view-flashcards" href="/view_flashcards?username={{ username }}">View Previous Flashcards</a>
+        <a href="{{ url_for('logout') }}">Log Out</a>
         
     </div>
 
