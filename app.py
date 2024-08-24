@@ -22,6 +22,8 @@ load_dotenv()
 
 app = Flask(__name__)
 
+# Advanced CORS configuration
+cors = CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.secret_key = os.getenv('SECRET_KEY')
 bcrypt = Bcrypt(app)
@@ -30,7 +32,6 @@ bcrypt = Bcrypt(app)
 api_key = os.getenv('API_KEY')
 genai.configure(api_key=api_key)
 
-CORS(app)  # Enable CORS
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
 # Set up MongoDB
@@ -104,18 +105,20 @@ def upload_page():
         return redirect(url_for('login'))
     return render_template('upload.html', username=session['username'], plan=session['plan'])
 
-# Route for fetching courses in database
-@app.route('/courses')
+# Route for fetching courses in request.jsonbase
+@app.route('/courses', methods=['POST'])
 def get_courses():
-    username = request.args.get('username')  # Get the username from query parameters
+    username = request.json.get('username')
+
     courses = flashcards_collection.distinct('course', {'username': username})
     return jsonify({'courses': courses})
 
-# Route for retrieving flashcards from database
-@app.route('/flashcards')
+
+# Route for retrieving flashcards from request.jsonbase
+@app.route('/flashcards', methods=['POST'])
 def get_flashcards():
-    username = request.args.get('username')
-    course = request.args.get('course', 'general')
+    username = request.json.get('username')
+    course = request.json.get('selectedCourse')
     
     # Find the document based on username and course
     flashcards_data = flashcards_collection.find_one({'username': username, 'course': course})
@@ -127,140 +130,169 @@ def get_flashcards():
         })
     return jsonify({'flashcards': [], 'quizzes': []})
 
+# Route for fetching user details
+@app.route('/userAccount', methods=['POST'])
+def get_userAccount():
+    username = request.json.get('username')
+    
+    # Find the user in the database
+    user = users.find_one({'username': username})
+    
+    if user:
+        email = user.get('email')
+        plan = user.get('plan')
+        return jsonify({'email': email, 'plan': plan}), 200
+    else:
+        return jsonify({'error': 'User not found'}), 404
+
+
 # Register user
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register', methods=['POST'])
 def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
+    username = request.json.get('username')
+    email = request.json.get('email')
+    password = request.json.get('password')
 
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        user_data = {
-            "username": username,
-            "email": email,
-            "password": hashed_password,
-            "plan": "premium"
-        }
+    user_data = {
+        "username": username,
+        "email": email,
+        "password": hashed_password,
+        "plan": "premium"
+    }
 
-        if users.find_one({"email": email}):
-            flash("Email already registered!")
-            return redirect(url_for('register'))
+    if users.find_one({"email": email}):
+        return jsonify({'error': 'Email already registered!'}), 400
 
-        if users.find_one({"username": username}):
-            flash("Username already registered!")
-            return redirect(url_for('register'))
+    if users.find_one({"username": username}):
+        return jsonify({'error': 'Username already registered!'}), 400
 
-        users.insert_one(user_data)
-        flash("Registration successful! Please log in.")
-        return redirect(url_for('login'))
-
-    return render_template('register.html')
+    users.insert_one(user_data)
+    
+    return jsonify({'message': 'Registration successful!'}), 201
 
 
 # Login User
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['POST'])
 def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+    email = request.json.get('email')
+    password = request.json.get('password')
 
-        user = users.find_one({"email": email})
-        if user and bcrypt.check_password_hash(user['password'], password):
-            session['user_id'] = str(user['_id'])
-            session['username'] = user['username']
-            session['plan'] = user['plan']
-            flash("Login successful!")
-            return redirect(url_for('upload_page'))
-        else:
-            flash("Invalid credentials!")
-            return redirect(url_for('login'))
+    user = users.find_one({"email": email})
+    if user and bcrypt.check_password_hash(user['password'], password):
+        session['user_id'] = str(user['_id'])
+        session['username'] = user['username']
+        session['plan'] = user['plan']
+        return jsonify({'username': user['username']}), 200
+    else:
+        return jsonify({'error': 'Invalid credentials!'}), 401
 
-    return render_template('login.html')
 
 # Logout User
 @app.route('/logout')
 def logout():
     session.clear()
-    flash("You have been logged out.")
-    return redirect(url_for('home'))
-
+    return jsonify({'message': 'You have been logged out.'}), 200
 
 
 # Upload for free version
-@app.route('/preview_free_upload', methods=['GET', 'POST'])
+@app.route('/preview_free_upload', methods=['POST'])
 def preview_free_upload_file():
-    if request.method == 'POST':
-        file = request.files['file']
-        course = request.form.get('text', 'general').title()
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part in the request'}), 400
 
-        if file:
-            file_ext = file.filename.split('.')[-1].lower()
-            if file_ext == 'pdf':
-                file.save('uploaded_doc.pdf')
-                images = convert_from_path('uploaded_doc.pdf',500,poppler_path=r'C:\Program Files\poppler-24.07.0\Library\bin')
-                image_paths = []
-                for i, image in enumerate(images):
-                    image_path = f'static/page_{i + 1}.png'
-                    image.save(image_path, 'PNG')
-                    image_paths.append(image_path)
-                return render_template('preview_pdf_free.html', images=image_paths, file_ext=file_ext, course=course)
-            elif file_ext == 'docx':
-                file.save('uploaded_doc.docx')
-                doc = Document('uploaded_doc.docx')
-                paragraphs = [p.text for p in doc.paragraphs]
-                pages = chunk_text_by_lines(paragraphs)
-                return render_template('preview_text_free.html', pages=pages, file_ext=file_ext, course=course)
-            elif file_ext == 'pptx':
-                file.save('uploaded_presentation.pptx')
-                ppt = Presentation('uploaded_presentation.pptx')
-                slides = [slide.shapes.title.text if slide.shapes.title else '' for slide in ppt.slides]
-                return render_template('preview_text_free.html', pages=[slides], file_ext=file_ext, course=course)
-    return render_template('upload.html')
+    file = request.files['file']
+    print('file uploaded')
+
+    if file:
+        file_ext = file.filename.split('.')[-1].lower()
+        if file_ext == 'pdf':
+            file.save('uploaded_doc.pdf')
+            images = convert_from_path('uploaded_doc.pdf', 500, poppler_path=r'C:\Program Files\poppler-24.07.0\Library\bin')
+            image_paths = []
+            for i, image in enumerate(images):
+                image_path = f'static/page_{i + 1}.png'
+                image.save(image_path, 'PNG')
+                image_paths.append(url_for('static', filename=f'page_{i + 1}.png', _external=True))
+            return jsonify({'file_ext': 'pdf', 'images': image_paths})
+        elif file_ext == 'docx':
+            file.save('uploaded_doc.docx')
+            doc = Document('uploaded_doc.docx')
+            paragraphs = [p.text for p in doc.paragraphs]
+            pages = chunk_text_by_lines(paragraphs)
+            return jsonify({'file_ext': 'docx', 'pages': pages})
+        elif file_ext == 'pptx':
+            file.save('uploaded_presentation.pptx')
+            ppt = Presentation('uploaded_presentation.pptx')
+            slides_content = []
+            for slide in ppt.slides:
+                slide_text = []
+                for shape in slide.shapes:
+                    if hasattr(shape, 'text'):
+                        slide_text.append(shape.text)
+                slides_content.append('\n'.join(slide_text))
+            pages = chunk_text_by_lines(slides_content)
+            return jsonify({'file_ext': 'pptx', 'pages': pages})
+
+    return jsonify({'error': 'Unsupported file type'}), 400
 
 
 
 # Upload for premium users
-@app.route('/preview_upload', methods=['GET', 'POST'])
+@app.route('/preview_upload', methods=['POST'])
 def preview_upload_file():
-    if request.method == 'POST':
-        file = request.files['file']
-        course = request.form.get('text', 'general').title()
-        username = request.form.get('username')
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
 
-        if file:
-            file_ext = file.filename.split('.')[-1].lower()
-            if file_ext == 'pdf':
-                file.save('uploaded_doc.pdf')
-                images = convert_from_path('uploaded_doc.pdf',500,poppler_path=r'C:\Program Files\poppler-24.07.0\Library\bin')
-                image_paths = []
-                for i, image in enumerate(images):
-                    image_path = f'static/page_{i + 1}.png'
-                    image.save(image_path, 'PNG')
-                    image_paths.append(image_path)
-                return render_template('preview_pdf.html', images=image_paths, file_ext=file_ext, course=course, username=username)
-            elif file_ext == 'docx':
-                file.save('uploaded_doc.docx')
-                doc = Document('uploaded_doc.docx')
-                paragraphs = [p.text for p in doc.paragraphs]
-                pages = chunk_text_by_lines(paragraphs)
-                return render_template('preview_text.html', pages=pages, file_ext=file_ext, course=course, username=username)
-            elif file_ext == 'pptx':
-                file.save('uploaded_presentation.pptx')
-                ppt = Presentation('uploaded_presentation.pptx')
-                slides = [slide.shapes.title.text if slide.shapes.title else '' for slide in ppt.slides]
-                return render_template('preview_text.html', pages=[slides], file_ext=file_ext, course=course, username=username)
-    return render_template('upload.html')
+    file = request.files['file']
+    print('file uploaded')
+    username = request.form.get('username')
+    course = request.form.get('course', 'general').title()
+    print(course)
+    print(username)
+
+    if file:
+        file_ext = file.filename.split('.')[-1].lower()
+        if file_ext == 'pdf':
+            file.save('uploaded_doc.pdf')
+            images = convert_from_path('uploaded_doc.pdf', 500, poppler_path=r'C:\Program Files\poppler-24.07.0\Library\bin')
+            image_paths = []
+            for i, image in enumerate(images):
+                image_path = f'static/page_{i + 1}.png'
+                image.save(image_path, 'PNG')
+                image_paths.append(url_for('static', filename=f'page_{i + 1}.png', _external=True))
+            return jsonify({'file_ext': file_ext, 'images': image_paths, 'course': course, 'username': username})
+        elif file_ext == 'docx':
+            file.save('uploaded_doc.docx')
+            doc = Document('uploaded_doc.docx')
+            paragraphs = [p.text for p in doc.paragraphs]
+            pages = chunk_text_by_lines(paragraphs)
+            return jsonify({'file_ext': file_ext, 'pages': pages, 'course': course, 'username': username})
+        elif file_ext == 'pptx':
+            file.save('uploaded_presentation.pptx')
+            ppt = Presentation('uploaded_presentation.pptx')
+            slides_content = []
+            for slide in ppt.slides:
+                slide_text = []
+                for shape in slide.shapes:
+                    if hasattr(shape, 'text'):
+                        slide_text.append(shape.text)
+                slides_content.append('\n'.join(slide_text))
+            pages = chunk_text_by_lines(slides_content)
+            return jsonify({'file_ext': file_ext, 'pages': pages, 'course': course, 'username': username})
+        else:
+            return jsonify({'error': 'Unsupported file type'}), 400
+
+    return jsonify({'error': 'No file uploaded'}), 400
 
 
-
-# Free flashcard generation
+# Generate cards for free users
 @app.route('/process_free', methods=['POST'])
 def process_free_pages():
-    selected_pages = request.form.getlist('pages')
-    file_ext = request.form.get('file_ext')
-    flashcard_number = request.form.get('flashcard-number')
+    selected_pages = request.json.get('pages')
+    file_ext = request.json.get('file_ext')
+    flashcard_number = request.json.get('flashcard_number')
 
     try:
         extracted_text = ''
@@ -278,6 +310,7 @@ def process_free_pages():
                     os.remove(image_path)
             if os.path.exists('uploaded_doc.pdf'):
                 os.remove('uploaded_doc.pdf')
+            print(extracted_text)
 
         elif file_ext == 'docx':
             doc = Document('uploaded_doc.docx')
@@ -287,6 +320,7 @@ def process_free_pages():
                 extracted_text += '\n'.join(pages[int(page_num) - 1])
             if os.path.exists('uploaded_doc.docx'):
                 os.remove('uploaded_doc.docx')
+            print(extracted_text)
 
         elif file_ext == 'pptx':
             ppt = Presentation('uploaded_presentation.pptx')
@@ -296,27 +330,33 @@ def process_free_pages():
             if os.path.exists('uploaded_presentation.pptx'):
                 os.remove('uploaded_presentation.pptx')
 
-        # print(extracted_text)
+        # Generate flashcards
         flashcards = generate_flashcards(extracted_text, flashcard_number)
         print(flashcards)
+        return jsonify({'flashcards': flashcards})
 
     except Exception as e:
         print(f"Error processing file: {e}")
-        return render_template('generated_cards_free.html')
-
-    return render_template('generated_cards_free.html', flashcards=flashcards )
+        return jsonify({'error': 'An error occurred while processing the file.'}), 500
 
 
 
 # Generating cards for premium users
 @app.route('/process', methods=['POST'])
 def process_pages():
-    selected_pages = request.form.getlist('pages')
-    file_ext = request.form.get('file_ext')
-    course = request.form.get('course', 'General')
-    username = request.form.get('username')
-    flashcard_number = request.form.get('flashcard-number')
-    quiz = 'quiz' in request.form
+    selected_pages = request.json.get('pages')
+    flashcard_number = request.json.get('flashcard_number')
+    quiz = request.json.get('quiz')
+    file_ext = request.json.get('file_ext')
+    course = request.json.get('course', 'General')
+    username = request.json.get('username')
+    print(f"Selected Pages: {selected_pages}")
+    print(f"Flashcard Number: {flashcard_number}")
+    print(f"Quiz: {quiz}")
+    print(f"File Extension: {file_ext}")
+    print(f"Course: {course}")
+    print(f"Username: {username}")
+
 
     try:
         extracted_text = ''
@@ -365,7 +405,7 @@ def process_pages():
         )
 
         quiz_cards = []
-        if quiz:
+        if quiz == 'yes':
             quiz_number = 5
             quiz_cards = generate_quiz(extracted_text, quiz_number)
             print(quiz_cards)
@@ -377,14 +417,22 @@ def process_pages():
                 upsert=True
             )
 
-        return render_template('generated_cards.html', file_type=file_ext, flashcards=flashcards, quiz_cards=quiz_cards)
+        return jsonify({'flashcards': flashcards, 'quiz_cards':quiz_cards})
 
     except Exception as e:
         # Handle any errors that occur during processing
         return str(e)
 
 
-
+# Clean flashcard response
+def clean_text(text):
+    # Remove asterisks
+    text = text.replace('*', '')
+    # Remove HTML line breaks
+    text = text.replace('<br>', '\n')
+    # Remove any other unwanted symbols (e.g., extra spaces)
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with a single space
+    return text.strip()
 
 # Flashcard generation with gemini
 def generate_flashcards(text, num_flashcards, retries=3):
@@ -405,6 +453,10 @@ def generate_flashcards(text, num_flashcards, retries=3):
                     json_text = flashcards_text[json_start:]
                     try:
                         flashcards = json.loads(json_text)
+                        # Clean up the flashcards
+                        for card in flashcards:
+                            card['front'] = clean_text(card['front'])
+                            card['back'] = clean_text(card['back'])
                         return flashcards
                     except json.JSONDecodeError as e:
                         print(f"JSON decode error on attempt {attempt + 1}: {e}")
@@ -459,4 +511,5 @@ def generate_quiz(text, num_quiz, retries=3):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
