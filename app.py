@@ -324,9 +324,16 @@ def process_free_pages():
 
         elif file_ext == 'pptx':
             ppt = Presentation('uploaded_presentation.pptx')
-            slides = [slide.shapes.title.text if slide.shapes.title else '' for slide in ppt.slides]
+            slides_content = []
+            for slide in ppt.slides:
+                slide_text = []
+                for shape in slide.shapes:
+                    if hasattr(shape, 'text'):
+                        slide_text.append(shape.text)
+                slides_content.append('\n'.join(slide_text))
+            pages = chunk_text_by_lines(slides_content)
             for page_num in selected_pages:
-                extracted_text += slides[int(page_num) - 1] + '\n'
+                extracted_text += '\n'.join(pages[int(page_num) - 1])
             if os.path.exists('uploaded_presentation.pptx'):
                 os.remove('uploaded_presentation.pptx')
 
@@ -387,9 +394,16 @@ def process_pages():
 
         elif file_ext == 'pptx':
             ppt = Presentation('uploaded_presentation.pptx')
-            slides = [slide.shapes.title.text if slide.shapes.title else '' for slide in ppt.slides]
+            slides_content = []
+            for slide in ppt.slides:
+                slide_text = []
+                for shape in slide.shapes:
+                    if hasattr(shape, 'text'):
+                        slide_text.append(shape.text)
+                slides_content.append('\n'.join(slide_text))
+            pages = chunk_text_by_lines(slides_content)
             for page_num in selected_pages:
-                extracted_text += slides[int(page_num) - 1] + '\n'
+                extracted_text += '\n'.join(pages[int(page_num) - 1])
             if os.path.exists('uploaded_presentation.pptx'):
                 os.remove('uploaded_presentation.pptx')
 
