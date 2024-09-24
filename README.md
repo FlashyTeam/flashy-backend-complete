@@ -74,4 +74,4 @@ Contributions to Flashy are welcome! Please fork the repository and submit a pul
 
 ## Contact
 
-For any queries or support, please contact frimpongprince2000@gmail.com(mailto:frimpongprince2000@gmail.com).
+For any queries or support, please contact frimpongprince2000@gmail.com
