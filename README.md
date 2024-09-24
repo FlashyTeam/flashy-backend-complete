@@ -2,7 +2,8 @@
 
 Flashy is an innovative web application that automatically generates flashcards and quizzes from uploaded documents. This repository contains the backend code for the Flashy project.
 
-### Complete frontend can be found here
+### Complete frontend can be found here 
+https://github.com/Eben37/Flashy-swe
 ```
 https://github.com/Eben37/Flashy-swe
 ```
