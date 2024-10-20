@@ -75,7 +75,7 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    return render_template('home.html')
+    return "Welcome to the Flashy API"
 
 # Route for generated cards for free version
 @app.route('/generated_cards_free')
